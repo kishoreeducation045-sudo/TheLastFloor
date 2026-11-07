@@ -250,3 +250,4 @@ function HUDController.Init()
 end
 
 return HUDController
+
