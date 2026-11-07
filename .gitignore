@@ -1,0 +1,12 @@
+# Roblox / Luau Git Ignore
+*.rbxlx.lock
+*.rbxl.lock
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build & Logs
+*.log
+

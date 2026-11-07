@@ -1,0 +1,6 @@
+# Rokit configuration for THE LAST FLOOR – VACCINE PROTOCOL
+
+[tools]
+rojo = "rojo-rbx/rojo@7.7.1"
+selene = "Kampfkarren/selene@0.27.1"
+stylua = "JohnnyMorganz/StyLua@2.0.2"

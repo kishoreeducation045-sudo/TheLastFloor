@@ -1,0 +1,33 @@
+{
+  "name": "TheLastFloor",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "TheLastFloor": {
+        "$path": "src/ReplicatedStorage"
+      }
+    },
+    "ServerScriptService": {
+      "TheLastFloor": {
+        "$path": "src/ServerScriptService"
+      }
+    },
+    "ServerStorage": {
+      "TheLastFloor": {
+        "$path": "src/ServerStorage"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "TheLastFloor": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts"
+        }
+      }
+    },
+    "StarterGui": {
+      "TheLastFloor": {
+        "$path": "src/StarterGui"
+      }
+    }
+  }
+}
