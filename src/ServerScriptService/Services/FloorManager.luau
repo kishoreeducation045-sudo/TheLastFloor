@@ -4,6 +4,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
 local GameConfig = require(ReplicatedStorage.TheLastFloor.Configuration.GameConfig)
 local remotes = ReplicatedStorage.TheLastFloor.Remotes
@@ -17,6 +18,36 @@ FloorManager.TimeRemaining = 120
 FloorManager.IsActive = false
 FloorManager.B1CorrectCode = "4815"
 local timerThread: thread? = nil
+
+local function syncPillarsToCode(codeStr: string)
+    local tlf = Workspace:FindFirstChild("TheLastFloor")
+    if not tlf then return end
+    local b1 = tlf:FindFirstChild("Basement_B1")
+    if not b1 then return end
+
+    local d1 = string.sub(codeStr, 1, 1)
+    local d2 = string.sub(codeStr, 2, 2)
+    local d3 = string.sub(codeStr, 3, 3)
+    local d4 = string.sub(codeStr, 4, 4)
+
+    local pillarMappings = {
+        { name = "GaragePillar_West_1", text = "[ALPHA - " .. d1 .. "]" },
+        { name = "GaragePillar_West_2", text = "[SIGMA - " .. d2 .. "]" },
+        { name = "GaragePillar_West_3", text = "[OMEGA - " .. d3 .. "]" },
+        { name = "GaragePillar_West_4", text = "[DELTA - " .. d4 .. "]" },
+    }
+
+    for _, pData in ipairs(pillarMappings) do
+        local pillar = b1:FindFirstChild(pData.name)
+        if pillar then
+            local sg = pillar:FindFirstChildOfClass("SurfaceGui")
+            local lbl = sg and sg:FindFirstChildOfClass("TextLabel")
+            if lbl then
+                lbl.Text = pData.text
+            end
+        end
+    end
+end
 
 function FloorManager.StartFloor(floorIndex: number)
     FloorManager.CurrentFloorIndex = floorIndex
@@ -61,6 +92,8 @@ function FloorManager.Init(ElevatorService: any)
     FloorManager.B1CorrectCode = string.format("%d%d%d%d", d1, d2, d3, d4)
     print(string.format("[FloorManager] B1 Keypad Solution generated: %s", FloorManager.B1CorrectCode))
 
+    syncPillarsToCode(FloorManager.B1CorrectCode)
+
     submitKeypadFunc.OnServerInvoke = function(player: Player, enteredCode: any)
         if tostring(enteredCode) == FloorManager.B1CorrectCode then
             print(string.format("[FloorManager] Player %s entered correct B1 Code!", player.Name))
@@ -73,4 +106,3 @@ function FloorManager.Init(ElevatorService: any)
 end
 
 return FloorManager
-
