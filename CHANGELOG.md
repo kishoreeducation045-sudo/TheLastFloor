@@ -16,3 +16,4 @@ All notable project changes, milestones, and architectural updates will be docum
   - `docs/TEST_PLAN.md`
 - Network Remote contracts for health, revive, spectator, and floor synchronization.
 - Initial elevator prototype structure and controller in Roblox Studio (`Place1.rbxl`).
+

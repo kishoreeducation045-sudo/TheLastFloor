@@ -1,30 +1,38 @@
 --!strict
 -- Master Game Manager for THE LAST FLOOR – VACCINE PROTOCOL
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Workspace = game:GetService("Workspace")
 
-local GameConfig = require(ReplicatedStorage.TheLastFloor.Configuration.GameConfig)
-local HealthManager = require(ServerScriptService.TheLastFloor.Services.HealthManager)
+local services = ServerScriptService:WaitForChild("TheLastFloor"):WaitForChild("Services")
+local HealthManager = require(services:WaitForChild("HealthManager")) :: any
+local LobbyService = require(services:WaitForChild("LobbyService")) :: any
+local ElevatorService = require(services:WaitForChild("ElevatorService")) :: any
+local FloorManager = require(services:WaitForChild("FloorManager")) :: any
 
-print("[GameManager] Initializing THE LAST FLOOR – VACCINE PROTOCOL...")
+print("[GameManager] Booting THE LAST FLOOR – VACCINE PROTOCOL (Vertical Slice)...")
 
 HealthManager.Init()
+LobbyService.Init()
+FloorManager.Init(ElevatorService)
 
-local function onPlayerAdded(player: Player)
-    print(string.format("[GameManager] Player joined: %s (UserId: %d)", player.Name, player.UserId))
-end
+task.spawn(function()
+    local tlfWS = Workspace:WaitForChild("TheLastFloor")
+    local elevFolder = tlfWS:WaitForChild("Elevator")
+    local cabin = elevFolder:WaitForChild("ElevatorCabin") :: Model
+    ElevatorService.BindCabin(cabin)
+    ElevatorService.UpdateScreen("THE LAST FLOOR", "B1: BASEMENT – LOCKED")
+    print("[GameManager] Elevator bound and locked.")
 
-local function onPlayerRemoving(player: Player)
-    print(string.format("[GameManager] Player leaving: %s", player.Name))
-end
+    local remotes = ReplicatedStorage:WaitForChild("TheLastFloor"):WaitForChild("Remotes")
+    local matchStartingRemote = remotes:WaitForChild("MatchStarting") :: RemoteEvent
+    matchStartingRemote.OnServerEvent:Connect(function()
+        FloorManager.StartFloor(0)
+    end)
 
-Players.PlayerAdded:Connect(onPlayerAdded)
-for _, p in ipairs(Players:GetPlayers()) do
-    onPlayerAdded(p)
-end
+    task.wait(2)
+    FloorManager.StartFloor(0)
+end)
 
-Players.PlayerRemoving:Connect(onPlayerRemoving)
-
-print("[GameManager] Core services initialized successfully.")
+print("[GameManager] System ready.")

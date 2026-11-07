@@ -44,3 +44,4 @@ To guarantee publication-grade stability, testing is conducted across:
 - [ ] Elevator display updates floor status, timer, and warnings accurately.
 - [ ] Players cannot board or leave while transit sequence is active.
 - [ ] Checkpoints persist across transitions.
+

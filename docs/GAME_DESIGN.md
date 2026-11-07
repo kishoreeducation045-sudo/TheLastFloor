@@ -105,3 +105,4 @@ To survive and contain the contagion, the team must ascend the tower floor-by-fl
   - Slot 3: Medical Syringe / Bandage (restores 40 HP).
 - Independent Equipment: Heavy Duty Flashlight (Toggled via 'F', drains battery if not managed).
 - Strict ammunition scarcity: Ammo boxes must be searched from drawers, lockers, and toolboxes.
+

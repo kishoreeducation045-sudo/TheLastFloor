@@ -150,3 +150,4 @@ GameConfig.Floors = {
 }
 
 return table.freeze(GameConfig)
+

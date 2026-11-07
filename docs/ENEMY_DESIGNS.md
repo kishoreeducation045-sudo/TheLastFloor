@@ -69,3 +69,4 @@
   - The patient zero organism rooted into the building's central ventilation and vaccine vault.
   - Attacks: Tendril whips, spore mine eruptions, summoning waves of Runners and Crawlers.
   - Defeat / Survival Condition: Calibrate the extraction centrifuge, synthesize the neutralizing anti-virus, inject the core biomass, and escape via the elevator/roof before building detonation.
+

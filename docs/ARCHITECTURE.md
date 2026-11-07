@@ -77,3 +77,4 @@ TheLastFloor/
 | `FloorTimerUpdate` | RemoteEvent | Server -> Clients | Synchronizes countdown timer with server clock |
 | `ElevatorAction` | RemoteFunction| Client -> Server | Requests elevator activation / button press |
 | `SubmitPuzzleCode` | RemoteFunction| Client -> Server | Submits a keypad code or puzzle item combination |
+

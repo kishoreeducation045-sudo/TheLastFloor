@@ -68,3 +68,4 @@
 - **Environment:** Sterile cryogenic research vault with the central Vaccine Chamber.
 - **Puzzle:** Insert the 3 researcher keys, calibrate the centrifuge, retrieve the prototype Vaccine vial, and signal the roof extraction beacon.
 - **Final Encounter:** The Origin (patient zero entity). Escape back to the elevator or extraction point before the building collapses.
+
