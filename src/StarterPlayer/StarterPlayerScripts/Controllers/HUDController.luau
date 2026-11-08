@@ -1,6 +1,6 @@
 --!strict
 -- HUDController for THE LAST FLOOR – VACCINE PROTOCOL
--- Manages top HUD (timer, objective), bottom HUD (health, stamina), and interactive elevator keypad modal.
+-- Manages compact top-right timer, HP & Stamina bars in bottom-left, and interactive elevator keypad modal.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,9 +12,18 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local remotes = ReplicatedStorage:WaitForChild("TheLastFloor"):WaitForChild("Remotes")
-local floorStateRemote = remotes:WaitForChild("FloorStateChanged") :: RemoteEvent
 local floorTimerRemote = remotes:WaitForChild("FloorTimerUpdate") :: RemoteEvent
 local submitKeypadFunc = remotes:WaitForChild("SubmitKeypadCode") :: RemoteFunction
+
+local hpFill: Frame? = nil
+local staminaFill: Frame? = nil
+
+function HUDController.SetStamina(percent: number)
+    if staminaFill then
+        local clamped = math.clamp(percent, 0, 1)
+        staminaFill.Size = UDim2.new(clamped, 0, 1, 0)
+    end
+end
 
 function HUDController.Init()
     local sg = Instance.new("ScreenGui")
@@ -24,95 +33,141 @@ function HUDController.Init()
     sg.DisplayOrder = 5
     sg.Parent = playerGui
 
-    -- TOP HUD: TIMER & OBJECTIVE
-    local topFrame = Instance.new("Frame")
-    topFrame.Name = "TopHUD"
-    topFrame.Size = UDim2.new(0, 440, 0, 75)
-    topFrame.Position = UDim2.new(0.5, -220, 0, 15)
-    topFrame.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
-    topFrame.BackgroundTransparency = 0.25
-    local cornerTop = Instance.new("UICorner") cornerTop.CornerRadius = UDim.new(0, 8) cornerTop.Parent = topFrame
-    local strokeTop = Instance.new("UIStroke") strokeTop.Color = Color3.fromRGB(60, 68, 80) strokeTop.Thickness = 1.5 strokeTop.Parent = topFrame
-    topFrame.Parent = sg
+    -------------------------------------------------------------------------
+    -- 1. COMPACT TOP-RIGHT TIMER BOX
+    -------------------------------------------------------------------------
+    local timerBox = Instance.new("Frame")
+    timerBox.Name = "TopRightTimerBox"
+    timerBox.Size = UDim2.new(0, 160, 0, 36)
+    timerBox.Position = UDim2.new(1, -180, 0, 20)
+    timerBox.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
+    timerBox.BackgroundTransparency = 0.25
+
+    local cornerTimer = Instance.new("UICorner")
+    cornerTimer.CornerRadius = UDim.new(0, 6)
+    cornerTimer.Parent = timerBox
+
+    local strokeTimer = Instance.new("UIStroke")
+    strokeTimer.Color = Color3.fromRGB(60, 68, 80)
+    strokeTimer.Thickness = 1.2
+    strokeTimer.Parent = timerBox
 
     local timerLabel = Instance.new("TextLabel")
     timerLabel.Name = "TimerLabel"
-    timerLabel.Size = UDim2.new(1, 0, 0.45, 0)
-    timerLabel.Position = UDim2.new(0, 0, 0.08, 0)
+    timerLabel.Size = UDim2.new(1, 0, 1, 0)
     timerLabel.BackgroundTransparency = 1
-    timerLabel.Text = "TIME REMAINING: 02:00"
+    timerLabel.Text = "TIME: 02:00"
     timerLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
     timerLabel.Font = Enum.Font.GothamBlack
-    timerLabel.TextSize = 20
-    timerLabel.Parent = topFrame
+    timerLabel.TextSize = 16
+    timerLabel.Parent = timerBox
 
-    local objectiveLabel = Instance.new("TextLabel")
-    objectiveLabel.Name = "ObjectiveLabel"
-    objectiveLabel.Size = UDim2.new(1, -20, 0.4, 0)
-    objectiveLabel.Position = UDim2.new(0, 10, 0.52, 0)
-    objectiveLabel.BackgroundTransparency = 1
-    objectiveLabel.Text = "OBJECTIVE: Solve 4-symbol puzzle & unlock elevator"
-    objectiveLabel.TextColor3 = Color3.fromRGB(220, 225, 235)
-    objectiveLabel.Font = Enum.Font.GothamSemibold
-    objectiveLabel.TextSize = 13
-    objectiveLabel.TextWrapped = true
-    objectiveLabel.Parent = topFrame
+    timerBox.Parent = sg
 
     floorTimerRemote.OnClientEvent:Connect(function(secondsRemaining: number)
         local mins = math.floor(secondsRemaining / 60)
         local secs = secondsRemaining % 60
-        timerLabel.Text = string.format("TIME REMAINING: %02d:%02d", mins, secs)
+        timerLabel.Text = string.format("TIME: %02d:%02d", mins, secs)
         if secondsRemaining <= 30 then
-            timerLabel.TextColor3 = Color3.fromRGB(255, 20, 20)
+            timerLabel.TextColor3 = Color3.fromRGB(255, 30, 30)
         else
             timerLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
         end
     end)
 
-    floorStateRemote.OnClientEvent:Connect(function(id: number, name: string, code: string, dur: number, desc: string)
-        objectiveLabel.Text = "OBJECTIVE: " .. tostring(desc)
-    end)
+    -------------------------------------------------------------------------
+    -- 2. BOTTOM-LEFT HUD: HP (WHITE) & STAMINA (ORANGE) BARS
+    -------------------------------------------------------------------------
+    local statusFrame = Instance.new("Frame")
+    statusFrame.Name = "StatusHUD"
+    statusFrame.Size = UDim2.new(0, 240, 0, 60)
+    statusFrame.Position = UDim2.new(0, 25, 1, -85)
+    statusFrame.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
+    statusFrame.BackgroundTransparency = 0.25
 
-    -- BOTTOM-LEFT HUD: HEALTH
-    local hpFrame = Instance.new("Frame")
-    hpFrame.Name = "HealthHUD"
-    hpFrame.Size = UDim2.new(0, 260, 0, 50)
-    hpFrame.Position = UDim2.new(0, 25, 1, -75)
-    hpFrame.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
-    hpFrame.BackgroundTransparency = 0.25
-    local cornerHp = Instance.new("UICorner") cornerHp.CornerRadius = UDim.new(0, 6) cornerHp.Parent = hpFrame
-    local strokeHp = Instance.new("UIStroke") strokeHp.Color = Color3.fromRGB(50, 55, 65) strokeHp.Thickness = 1.5 strokeHp.Parent = hpFrame
-    hpFrame.Parent = sg
+    local cornerStatus = Instance.new("UICorner")
+    cornerStatus.CornerRadius = UDim.new(0, 6)
+    cornerStatus.Parent = statusFrame
 
-    local hpTitle = Instance.new("TextLabel")
-    hpTitle.Size = UDim2.new(0.4, 0, 1, 0)
-    hpTitle.Position = UDim2.new(0, 12, 0, 0)
-    hpTitle.BackgroundTransparency = 1
-    hpTitle.Text = "HEALTH"
-    hpTitle.TextColor3 = Color3.fromRGB(220, 220, 220)
-    hpTitle.Font = Enum.Font.GothamBold
-    hpTitle.TextSize = 14
-    hpTitle.TextXAlignment = Enum.TextXAlignment.Left
-    hpTitle.Parent = hpFrame
+    local strokeStatus = Instance.new("UIStroke")
+    strokeStatus.Color = Color3.fromRGB(50, 55, 65)
+    strokeStatus.Thickness = 1.2
+    strokeStatus.Parent = statusFrame
+
+    -- Row 1: HP
+    local hpLabel = Instance.new("TextLabel")
+    hpLabel.Name = "HPLabel"
+    hpLabel.Size = UDim2.new(0, 40, 0, 20)
+    hpLabel.Position = UDim2.new(0, 12, 0, 8)
+    hpLabel.BackgroundTransparency = 1
+    hpLabel.Text = "HP"
+    hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hpLabel.Font = Enum.Font.GothamBold
+    hpLabel.TextSize = 13
+    hpLabel.TextXAlignment = Enum.TextXAlignment.Left
+    hpLabel.Parent = statusFrame
 
     local hpBarBg = Instance.new("Frame")
-    hpBarBg.Size = UDim2.new(0.55, 0, 0.35, 0)
-    hpBarBg.Position = UDim2.new(0.4, 0, 0.32, 0)
+    hpBarBg.Name = "HPBarBg"
+    hpBarBg.Size = UDim2.new(0, 170, 0, 8)
+    hpBarBg.Position = UDim2.new(0, 55, 0, 14)
     hpBarBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
-    local cornerBar = Instance.new("UICorner") cornerBar.CornerRadius = UDim.new(0, 4) cornerBar.Parent = hpBarBg
-    hpBarBg.Parent = hpFrame
 
-    local hpFill = Instance.new("Frame")
+    local cornerHpBar = Instance.new("UICorner")
+    cornerHpBar.CornerRadius = UDim.new(0, 4)
+    cornerHpBar.Parent = hpBarBg
+
+    hpFill = Instance.new("Frame")
     hpFill.Name = "Fill"
     hpFill.Size = UDim2.new(1, 0, 1, 0)
-    hpFill.BackgroundColor3 = Color3.fromRGB(220, 45, 45)
-    local cornerFill = Instance.new("UICorner") cornerFill.CornerRadius = UDim.new(0, 4) cornerFill.Parent = hpFill
+    hpFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- White as requested
+    local cornerHpFill = Instance.new("UICorner")
+    cornerHpFill.CornerRadius = UDim.new(0, 4)
+    cornerHpFill.Parent = hpFill
     hpFill.Parent = hpBarBg
+    hpBarBg.Parent = statusFrame
+
+    -- Row 2: STAMINA
+    local stmLabel = Instance.new("TextLabel")
+    stmLabel.Name = "StaminaLabel"
+    stmLabel.Size = UDim2.new(0, 40, 0, 20)
+    stmLabel.Position = UDim2.new(0, 12, 0, 32)
+    stmLabel.BackgroundTransparency = 1
+    stmLabel.Text = "STM"
+    stmLabel.TextColor3 = Color3.fromRGB(255, 140, 20)
+    stmLabel.Font = Enum.Font.GothamBold
+    stmLabel.TextSize = 13
+    stmLabel.TextXAlignment = Enum.TextXAlignment.Left
+    stmLabel.Parent = statusFrame
+
+    local stmBarBg = Instance.new("Frame")
+    stmBarBg.Name = "StaminaBarBg"
+    stmBarBg.Size = UDim2.new(0, 170, 0, 8)
+    stmBarBg.Position = UDim2.new(0, 55, 0, 38)
+    stmBarBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
+
+    local cornerStmBar = Instance.new("UICorner")
+    cornerStmBar.CornerRadius = UDim.new(0, 4)
+    cornerStmBar.Parent = stmBarBg
+
+    staminaFill = Instance.new("Frame")
+    staminaFill.Name = "Fill"
+    staminaFill.Size = UDim2.new(1, 0, 1, 0)
+    staminaFill.BackgroundColor3 = Color3.fromRGB(255, 140, 20) -- Orange as requested
+    local cornerStmFill = Instance.new("UICorner")
+    cornerStmFill.CornerRadius = UDim.new(0, 4)
+    cornerStmFill.Parent = staminaFill
+    staminaFill.Parent = stmBarBg
+    stmBarBg.Parent = statusFrame
+
+    statusFrame.Parent = sg
 
     local function updateHealth(humanoid: Humanoid)
         humanoid.HealthChanged:Connect(function(hp)
             local pct = math.clamp(hp / humanoid.MaxHealth, 0, 1)
-            TweenService:Create(hpFill, TweenInfo.new(0.2), {Size = UDim2.new(pct, 0, 1, 0)}):Play()
+            if hpFill then
+                TweenService:Create(hpFill, TweenInfo.new(0.2), {Size = UDim2.new(pct, 0, 1, 0)}):Play()
+            end
         end)
     end
 
@@ -124,7 +179,9 @@ function HUDController.Init()
         updateHealth(hum)
     end)
 
-    -- INTERACTIVE KEYPAD MODAL
+    -------------------------------------------------------------------------
+    -- 3. INTERACTIVE KEYPAD MODAL
+    -------------------------------------------------------------------------
     local kpModal = Instance.new("Frame")
     kpModal.Name = "KeypadModal"
     kpModal.Size = UDim2.new(0, 320, 0, 440)
@@ -246,8 +303,7 @@ function HUDController.Init()
         end)
     end)
 
-    print("[HUDController] HUD, timer, health and interactive keypad initialized.")
+    print("[HUDController] Compact Top-Right Timer, White HP & Orange Stamina bars initialized.")
 end
 
 return HUDController
-
