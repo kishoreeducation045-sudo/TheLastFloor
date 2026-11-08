@@ -42,6 +42,13 @@ function HealthManager.Init()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
         humanoid.BreakJointsOnDeath = false
 
+        -- Authoritative spawn inside basement beside motorcycle facing into the room
+        task.defer(function()
+            if rootPart and rootPart.Parent then
+                rootPart.CFrame = CFrame.new(60, 3.5, -55) * CFrame.Angles(0, math.rad(-90), 0)
+            end
+        end)
+
         humanoid.HealthChanged:Connect(function(health)
             if health <= 0 and not state.isDowned and not state.isSpectator then
                 -- Enter downed state: Fall to the ground limp
