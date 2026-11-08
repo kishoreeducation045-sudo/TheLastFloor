@@ -1,6 +1,5 @@
---!strict
 -- HUDController for THE LAST FLOOR – VACCINE PROTOCOL
--- Manages compact top-right timer, HP & Stamina bars in bottom-left, and interactive elevator keypad modal.
+-- Compact top-right timer | Bottom-left HP (white) + STM (orange) bars | Keypad modal
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,23 +8,26 @@ local Workspace = game:GetService("Workspace")
 
 local HUDController = {}
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local remotes = ReplicatedStorage:WaitForChild("TheLastFloor"):WaitForChild("Remotes")
-local floorTimerRemote = remotes:WaitForChild("FloorTimerUpdate") :: RemoteEvent
-local submitKeypadFunc = remotes:WaitForChild("SubmitKeypadCode") :: RemoteFunction
+local floorTimerRemote = remotes:WaitForChild("FloorTimerUpdate")
+local submitKeypadFunc = remotes:WaitForChild("SubmitKeypadCode")
 
-local hpFill: Frame? = nil
-local staminaFill: Frame? = nil
+local hpFill = nil
+local staminaFill = nil
 
-function HUDController.SetStamina(percent: number)
+function HUDController.SetStamina(percent)
     if staminaFill then
-        local clamped = math.clamp(percent, 0, 1)
-        staminaFill.Size = UDim2.new(clamped, 0, 1, 0)
+        staminaFill.Size = UDim2.new(math.clamp(percent, 0, 1), 0, 1, 0)
     end
 end
 
 function HUDController.Init()
+    -- Guard: destroy any duplicate HUD from a previous spawn
+    local existing = playerGui:FindFirstChild("TheLastFloor_HUD")
+    if existing then existing:Destroy() end
+
     local sg = Instance.new("ScreenGui")
     sg.Name = "TheLastFloor_HUD"
     sg.ResetOnSpawn = false
@@ -34,7 +36,7 @@ function HUDController.Init()
     sg.Parent = playerGui
 
     -------------------------------------------------------------------------
-    -- 1. COMPACT TOP-RIGHT TIMER BOX
+    -- 1. COMPACT TOP-RIGHT TIMER (160×36 px, no objective text)
     -------------------------------------------------------------------------
     local timerBox = Instance.new("Frame")
     timerBox.Name = "TopRightTimerBox"
@@ -42,63 +44,45 @@ function HUDController.Init()
     timerBox.Position = UDim2.new(1, -180, 0, 20)
     timerBox.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
     timerBox.BackgroundTransparency = 0.25
-
-    local cornerTimer = Instance.new("UICorner")
-    cornerTimer.CornerRadius = UDim.new(0, 6)
-    cornerTimer.Parent = timerBox
-
-    local strokeTimer = Instance.new("UIStroke")
-    strokeTimer.Color = Color3.fromRGB(60, 68, 80)
-    strokeTimer.Thickness = 1.2
-    strokeTimer.Parent = timerBox
+    local c1 = Instance.new("UICorner") c1.CornerRadius = UDim.new(0, 6) c1.Parent = timerBox
+    local s1 = Instance.new("UIStroke") s1.Color = Color3.fromRGB(60, 68, 80) s1.Thickness = 1.2 s1.Parent = timerBox
 
     local timerLabel = Instance.new("TextLabel")
     timerLabel.Name = "TimerLabel"
     timerLabel.Size = UDim2.new(1, 0, 1, 0)
     timerLabel.BackgroundTransparency = 1
-    timerLabel.Text = "TIME: 02:00"
-    timerLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+    timerLabel.Text = "02:00"
+    timerLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
     timerLabel.Font = Enum.Font.GothamBlack
-    timerLabel.TextSize = 16
+    timerLabel.TextSize = 18
     timerLabel.Parent = timerBox
-
     timerBox.Parent = sg
 
-    floorTimerRemote.OnClientEvent:Connect(function(secondsRemaining: number)
+    floorTimerRemote.OnClientEvent:Connect(function(secondsRemaining)
         local mins = math.floor(secondsRemaining / 60)
         local secs = secondsRemaining % 60
-        timerLabel.Text = string.format("TIME: %02d:%02d", mins, secs)
-        if secondsRemaining <= 30 then
-            timerLabel.TextColor3 = Color3.fromRGB(255, 30, 30)
-        else
-            timerLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-        end
+        timerLabel.Text = string.format("%02d:%02d", mins, secs)
+        timerLabel.TextColor3 = secondsRemaining <= 30
+            and Color3.fromRGB(255, 30, 30)
+            or  Color3.fromRGB(255, 80, 80)
     end)
 
     -------------------------------------------------------------------------
-    -- 2. BOTTOM-LEFT HUD: HP (WHITE) & STAMINA (ORANGE) BARS
+    -- 2. BOTTOM-LEFT STATUS HUD: HP (white) + STM (orange)
     -------------------------------------------------------------------------
     local statusFrame = Instance.new("Frame")
     statusFrame.Name = "StatusHUD"
-    statusFrame.Size = UDim2.new(0, 240, 0, 60)
-    statusFrame.Position = UDim2.new(0, 25, 1, -85)
+    statusFrame.Size = UDim2.new(0, 220, 0, 60)
+    statusFrame.Position = UDim2.new(0, 20, 1, -80)
     statusFrame.BackgroundColor3 = Color3.fromRGB(15, 18, 22)
-    statusFrame.BackgroundTransparency = 0.25
+    statusFrame.BackgroundTransparency = 0.3
+    local c2 = Instance.new("UICorner") c2.CornerRadius = UDim.new(0, 6) c2.Parent = statusFrame
+    local s2 = Instance.new("UIStroke") s2.Color = Color3.fromRGB(50, 55, 65) s2.Thickness = 1.2 s2.Parent = statusFrame
 
-    local cornerStatus = Instance.new("UICorner")
-    cornerStatus.CornerRadius = UDim.new(0, 6)
-    cornerStatus.Parent = statusFrame
-
-    local strokeStatus = Instance.new("UIStroke")
-    strokeStatus.Color = Color3.fromRGB(50, 55, 65)
-    strokeStatus.Thickness = 1.2
-    strokeStatus.Parent = statusFrame
-
-    -- Row 1: HP
+    -- HP row
     local hpLabel = Instance.new("TextLabel")
-    hpLabel.Name = "HPLabel"
-    hpLabel.Size = UDim2.new(0, 40, 0, 20)
-    hpLabel.Position = UDim2.new(0, 12, 0, 8)
+    hpLabel.Size = UDim2.new(0, 36, 0, 20)
+    hpLabel.Position = UDim2.new(0, 10, 0, 7)
     hpLabel.BackgroundTransparency = 1
     hpLabel.Text = "HP"
     hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -107,31 +91,23 @@ function HUDController.Init()
     hpLabel.TextXAlignment = Enum.TextXAlignment.Left
     hpLabel.Parent = statusFrame
 
-    local hpBarBg = Instance.new("Frame")
-    hpBarBg.Name = "HPBarBg"
-    hpBarBg.Size = UDim2.new(0, 170, 0, 8)
-    hpBarBg.Position = UDim2.new(0, 55, 0, 14)
-    hpBarBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
-
-    local cornerHpBar = Instance.new("UICorner")
-    cornerHpBar.CornerRadius = UDim.new(0, 4)
-    cornerHpBar.Parent = hpBarBg
+    local hpBg = Instance.new("Frame")
+    hpBg.Size = UDim2.new(0, 160, 0, 8)
+    hpBg.Position = UDim2.new(0, 50, 0, 13)
+    hpBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
+    local c3 = Instance.new("UICorner") c3.CornerRadius = UDim.new(0, 4) c3.Parent = hpBg
 
     hpFill = Instance.new("Frame")
-    hpFill.Name = "Fill"
     hpFill.Size = UDim2.new(1, 0, 1, 0)
-    hpFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- White as requested
-    local cornerHpFill = Instance.new("UICorner")
-    cornerHpFill.CornerRadius = UDim.new(0, 4)
-    cornerHpFill.Parent = hpFill
-    hpFill.Parent = hpBarBg
-    hpBarBg.Parent = statusFrame
+    hpFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    local c4 = Instance.new("UICorner") c4.CornerRadius = UDim.new(0, 4) c4.Parent = hpFill
+    hpFill.Parent = hpBg
+    hpBg.Parent = statusFrame
 
-    -- Row 2: STAMINA
+    -- STM row
     local stmLabel = Instance.new("TextLabel")
-    stmLabel.Name = "StaminaLabel"
-    stmLabel.Size = UDim2.new(0, 40, 0, 20)
-    stmLabel.Position = UDim2.new(0, 12, 0, 32)
+    stmLabel.Size = UDim2.new(0, 36, 0, 20)
+    stmLabel.Position = UDim2.new(0, 10, 0, 32)
     stmLabel.BackgroundTransparency = 1
     stmLabel.Text = "STM"
     stmLabel.TextColor3 = Color3.fromRGB(255, 140, 20)
@@ -140,29 +116,21 @@ function HUDController.Init()
     stmLabel.TextXAlignment = Enum.TextXAlignment.Left
     stmLabel.Parent = statusFrame
 
-    local stmBarBg = Instance.new("Frame")
-    stmBarBg.Name = "StaminaBarBg"
-    stmBarBg.Size = UDim2.new(0, 170, 0, 8)
-    stmBarBg.Position = UDim2.new(0, 55, 0, 38)
-    stmBarBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
-
-    local cornerStmBar = Instance.new("UICorner")
-    cornerStmBar.CornerRadius = UDim.new(0, 4)
-    cornerStmBar.Parent = stmBarBg
+    local stmBg = Instance.new("Frame")
+    stmBg.Size = UDim2.new(0, 160, 0, 8)
+    stmBg.Position = UDim2.new(0, 50, 0, 38)
+    stmBg.BackgroundColor3 = Color3.fromRGB(35, 40, 48)
+    local c5 = Instance.new("UICorner") c5.CornerRadius = UDim.new(0, 4) c5.Parent = stmBg
 
     staminaFill = Instance.new("Frame")
-    staminaFill.Name = "Fill"
     staminaFill.Size = UDim2.new(1, 0, 1, 0)
-    staminaFill.BackgroundColor3 = Color3.fromRGB(255, 140, 20) -- Orange as requested
-    local cornerStmFill = Instance.new("UICorner")
-    cornerStmFill.CornerRadius = UDim.new(0, 4)
-    cornerStmFill.Parent = staminaFill
-    staminaFill.Parent = stmBarBg
-    stmBarBg.Parent = statusFrame
-
+    staminaFill.BackgroundColor3 = Color3.fromRGB(255, 140, 20)
+    local c6 = Instance.new("UICorner") c6.CornerRadius = UDim.new(0, 4) c6.Parent = staminaFill
+    staminaFill.Parent = stmBg
+    stmBg.Parent = statusFrame
     statusFrame.Parent = sg
 
-    local function updateHealth(humanoid: Humanoid)
+    local function hookHealth(humanoid)
         humanoid.HealthChanged:Connect(function(hp)
             local pct = math.clamp(hp / humanoid.MaxHealth, 0, 1)
             if hpFill then
@@ -170,17 +138,15 @@ function HUDController.Init()
             end
         end)
     end
-
     if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
-        updateHealth(localPlayer.Character.Humanoid :: Humanoid)
+        hookHealth(localPlayer.Character.Humanoid)
     end
     localPlayer.CharacterAdded:Connect(function(char)
-        local hum = char:WaitForChild("Humanoid") :: Humanoid
-        updateHealth(hum)
+        hookHealth(char:WaitForChild("Humanoid"))
     end)
 
     -------------------------------------------------------------------------
-    -- 3. INTERACTIVE KEYPAD MODAL
+    -- 3. KEYPAD MODAL (hidden until ProximityPrompt triggered)
     -------------------------------------------------------------------------
     local kpModal = Instance.new("Frame")
     kpModal.Name = "KeypadModal"
@@ -188,122 +154,117 @@ function HUDController.Init()
     kpModal.Position = UDim2.new(0.5, -160, 0.5, -220)
     kpModal.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
     kpModal.Visible = false
-    local cornerKp = Instance.new("UICorner") cornerKp.CornerRadius = UDim.new(0, 10) cornerKp.Parent = kpModal
-    local strokeKp = Instance.new("UIStroke") strokeKp.Color = Color3.fromRGB(70, 78, 90) strokeKp.Thickness = 2 strokeKp.Parent = kpModal
+    local ckp = Instance.new("UICorner") ckp.CornerRadius = UDim.new(0, 10) ckp.Parent = kpModal
+    local skp = Instance.new("UIStroke") skp.Color = Color3.fromRGB(70, 78, 90) skp.Thickness = 2 skp.Parent = kpModal
     kpModal.Parent = sg
 
-    local kpTitleLbl = Instance.new("TextLabel")
-    kpTitleLbl.Size = UDim2.new(1, 0, 0, 40)
-    kpTitleLbl.Position = UDim2.new(0, 0, 0, 10)
-    kpTitleLbl.BackgroundTransparency = 1
-    kpTitleLbl.Text = "ELEVATOR OVERRIDE KEYPAD"
-    kpTitleLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
-    kpTitleLbl.Font = Enum.Font.GothamBold
-    kpTitleLbl.TextSize = 16
-    kpTitleLbl.Parent = kpModal
+    local kpTitle = Instance.new("TextLabel")
+    kpTitle.Size = UDim2.new(1, 0, 0, 40)
+    kpTitle.Position = UDim2.new(0, 0, 0, 10)
+    kpTitle.BackgroundTransparency = 1
+    kpTitle.Text = "ELEVATOR OVERRIDE KEYPAD"
+    kpTitle.TextColor3 = Color3.fromRGB(255, 80, 80)
+    kpTitle.Font = Enum.Font.GothamBold
+    kpTitle.TextSize = 16
+    kpTitle.Parent = kpModal
 
-    local displayBox = Instance.new("Frame")
-    displayBox.Size = UDim2.new(0.85, 0, 0, 50)
-    displayBox.Position = UDim2.new(0.075, 0, 0, 55)
-    displayBox.BackgroundColor3 = Color3.fromRGB(10, 12, 16)
-    local cornerDisp = Instance.new("UICorner") cornerDisp.CornerRadius = UDim.new(0, 6) cornerDisp.Parent = displayBox
-    displayBox.Parent = kpModal
+    local dispBox = Instance.new("Frame")
+    dispBox.Size = UDim2.new(0.85, 0, 0, 50)
+    dispBox.Position = UDim2.new(0.075, 0, 0, 55)
+    dispBox.BackgroundColor3 = Color3.fromRGB(10, 12, 16)
+    local cdisp = Instance.new("UICorner") cdisp.CornerRadius = UDim.new(0, 6) cdisp.Parent = dispBox
+    dispBox.Parent = kpModal
 
-    local pinDisplay = Instance.new("TextLabel")
-    pinDisplay.Size = UDim2.new(1, 0, 1, 0)
-    pinDisplay.BackgroundTransparency = 1
-    pinDisplay.Text = "----"
-    pinDisplay.TextColor3 = Color3.fromRGB(255, 215, 0)
-    pinDisplay.Font = Enum.Font.Code
-    pinDisplay.TextSize = 28
-    pinDisplay.Parent = displayBox
+    local pinLbl = Instance.new("TextLabel")
+    pinLbl.Size = UDim2.new(1, 0, 1, 0)
+    pinLbl.BackgroundTransparency = 1
+    pinLbl.Text = "----"
+    pinLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+    pinLbl.Font = Enum.Font.Code
+    pinLbl.TextSize = 28
+    pinLbl.Parent = dispBox
 
     local enteredPIN = ""
-
     local grid = Instance.new("Frame")
     grid.Size = UDim2.new(0.85, 0, 0, 240)
     grid.Position = UDim2.new(0.075, 0, 0, 120)
     grid.BackgroundTransparency = 1
     grid.Parent = kpModal
+    local gl = Instance.new("UIGridLayout")
+    gl.CellPadding = UDim2.new(0, 8, 0, 8)
+    gl.CellSize = UDim2.new(0.3, 0, 0.22, 0)
+    gl.Parent = grid
 
-    local uigrid = Instance.new("UIGridLayout")
-    uigrid.CellPadding = UDim2.new(0, 8, 0, 8)
-    uigrid.CellSize = UDim2.new(0.3, 0, 0.22, 0)
-    uigrid.Parent = grid
-
-    local buttons = {"1","2","3","4","5","6","7","8","9","CLR","0","OK"}
-    for _, bText in ipairs(buttons) do
-        local btn = Instance.new("TextButton")
-        btn.Text = bText
-        btn.TextColor3 = Color3.fromRGB(240, 245, 255)
-        btn.BackgroundColor3 = (bText == "OK") and Color3.fromRGB(38, 120, 55) or (bText == "CLR" and Color3.fromRGB(140, 40, 40) or Color3.fromRGB(28, 34, 44))
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 16
-        local cornerBtn = Instance.new("UICorner") cornerBtn.CornerRadius = UDim.new(0, 6) cornerBtn.Parent = btn
-        btn.Parent = grid
-
-        btn.Activated:Connect(function()
-            if bText == "CLR" then
+    for _, bt in ipairs({"1","2","3","4","5","6","7","8","9","CLR","0","OK"}) do
+        local b = Instance.new("TextButton")
+        b.Text = bt
+        b.TextColor3 = Color3.fromRGB(240, 245, 255)
+        b.BackgroundColor3 = bt=="OK" and Color3.fromRGB(38,120,55) or (bt=="CLR" and Color3.fromRGB(140,40,40) or Color3.fromRGB(28,34,44))
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 16
+        local cb = Instance.new("UICorner") cb.CornerRadius = UDim.new(0, 6) cb.Parent = b
+        b.Parent = grid
+        b.Activated:Connect(function()
+            if bt == "CLR" then
                 enteredPIN = ""
-                pinDisplay.Text = "----"
-                pinDisplay.TextColor3 = Color3.fromRGB(255, 215, 0)
-            elseif bText == "OK" then
+                pinLbl.Text = "----"
+                pinLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+            elseif bt == "OK" then
                 if #enteredPIN == 4 then
-                    pinDisplay.Text = "CHECKING..."
-                    local success, msg = submitKeypadFunc:InvokeServer(enteredPIN)
-                    if success then
-                        pinDisplay.Text = "UNLOCKED!"
-                        pinDisplay.TextColor3 = Color3.fromRGB(50, 255, 80)
+                    pinLbl.Text = "CHECKING..."
+                    local ok, _ = submitKeypadFunc:InvokeServer(enteredPIN)
+                    if ok then
+                        pinLbl.Text = "UNLOCKED!"
+                        pinLbl.TextColor3 = Color3.fromRGB(50, 255, 80)
                         task.delay(1.2, function()
                             kpModal.Visible = false
                             enteredPIN = ""
-                            pinDisplay.Text = "----"
+                            pinLbl.Text = "----"
                         end)
                     else
-                        pinDisplay.Text = "DENIED!"
-                        pinDisplay.TextColor3 = Color3.fromRGB(255, 40, 40)
+                        pinLbl.Text = "DENIED!"
+                        pinLbl.TextColor3 = Color3.fromRGB(255, 40, 40)
                         task.delay(1.2, function()
                             enteredPIN = ""
-                            pinDisplay.Text = "----"
-                            pinDisplay.TextColor3 = Color3.fromRGB(255, 215, 0)
+                            pinLbl.Text = "----"
+                            pinLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
                         end)
                     end
                 end
             else
                 if #enteredPIN < 4 then
-                    enteredPIN = enteredPIN .. bText
-                    pinDisplay.Text = enteredPIN
+                    enteredPIN = enteredPIN .. bt
+                    pinLbl.Text = enteredPIN
                 end
             end
         end)
     end
 
-    local closeKpBtn = Instance.new("TextButton")
-    closeKpBtn.Size = UDim2.new(0.85, 0, 0, 36)
-    closeKpBtn.Position = UDim2.new(0.075, 0, 1, -48)
-    closeKpBtn.Text = "CANCEL / CLOSE"
-    closeKpBtn.TextColor3 = Color3.fromRGB(180, 185, 195)
-    closeKpBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 34)
-    closeKpBtn.Font = Enum.Font.GothamBold
-    closeKpBtn.TextSize = 13
-    local cornerClose = Instance.new("UICorner") cornerClose.CornerRadius = UDim.new(0, 6) cornerClose.Parent = closeKpBtn
-    closeKpBtn.Parent = kpModal
-    closeKpBtn.Activated:Connect(function() kpModal.Visible = false end)
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0.85, 0, 0, 36)
+    closeBtn.Position = UDim2.new(0.075, 0, 1, -48)
+    closeBtn.Text = "CANCEL / CLOSE"
+    closeBtn.TextColor3 = Color3.fromRGB(180, 185, 195)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(25, 28, 34)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 13
+    local cc = Instance.new("UICorner") cc.CornerRadius = UDim.new(0, 6) cc.Parent = closeBtn
+    closeBtn.Parent = kpModal
+    closeBtn.Activated:Connect(function() kpModal.Visible = false end)
 
     task.spawn(function()
-        local tlfWS = Workspace:WaitForChild("TheLastFloor")
-        local b1 = tlfWS:WaitForChild("Basement_B1")
-        local kpPart = b1:WaitForChild("ElevatorKeypad")
-        local prompt = kpPart:WaitForChild("KeypadPrompt") :: ProximityPrompt
+        local b1 = Workspace:WaitForChild("TheLastFloor"):WaitForChild("Basement_B1")
+        local kpp = b1:WaitForChild("ElevatorKeypad")
+        local prompt = kpp:WaitForChild("KeypadPrompt")
         prompt.Triggered:Connect(function()
             kpModal.Visible = true
             enteredPIN = ""
-            pinDisplay.Text = "----"
-            pinDisplay.TextColor3 = Color3.fromRGB(255, 215, 0)
+            pinLbl.Text = "----"
+            pinLbl.TextColor3 = Color3.fromRGB(255, 215, 0)
         end)
     end)
 
-    print("[HUDController] Compact Top-Right Timer, White HP & Orange Stamina bars initialized.")
+    print("[HUDController] HUD initialized: compact timer top-right, HP + STM bars bottom-left.")
 end
 
 return HUDController
