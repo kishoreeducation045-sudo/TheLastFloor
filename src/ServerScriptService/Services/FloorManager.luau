@@ -258,7 +258,7 @@ local function onGeneratorFixed()
     task.spawn(function()
         local fixtures = {}
         for _, d in ipairs(b1:GetDescendants()) do
-            if d:IsA("PointLight") and d.Name == "CeilingLight" then
+            if (d:IsA("PointLight") or d:IsA("SpotLight")) and (d.Name == "CeilingLight" or d.Name == "CeilingLightGlow") then
                 table.insert(fixtures, d)
             end
         end
