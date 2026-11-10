@@ -1,22 +1,23 @@
 --!strict
 -- Master Game Manager for THE LAST FLOOR – VACCINE PROTOCOL
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Workspace = game:GetService("Workspace")
+local Workspace           = game:GetService("Workspace")
 
-local services = ServerScriptService:WaitForChild("TheLastFloor"):WaitForChild("Services")
-local HealthManager = require(services:WaitForChild("HealthManager")) :: any
-local LobbyService = require(services:WaitForChild("LobbyService")) :: any
+local services        = ServerScriptService:WaitForChild("TheLastFloor"):WaitForChild("Services")
+local HealthManager   = require(services:WaitForChild("HealthManager")) :: any
+local LobbyService    = require(services:WaitForChild("LobbyService")) :: any
 local ElevatorService = require(services:WaitForChild("ElevatorService")) :: any
-local FloorManager = require(services:WaitForChild("FloorManager")) :: any
+local FloorManager    = require(services:WaitForChild("FloorManager")) :: any
 
 print("[GameManager] Booting THE LAST FLOOR – VACCINE PROTOCOL (Vertical Slice)...")
 
 HealthManager.Init()
 LobbyService.Init()
-FloorManager.Init(ElevatorService)
+FloorManager.Init(ElevatorService, HealthManager)
 
+-- Connect Elevator Cabin once Workspace loaded
 task.spawn(function()
     local tlfWS = Workspace:WaitForChild("TheLastFloor")
     local elevFolder = tlfWS:WaitForChild("Elevator")

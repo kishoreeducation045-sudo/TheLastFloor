@@ -22,19 +22,29 @@ GameConfig.MaxHealth = 100
 GameConfig.RevivedHealth = 35
 GameConfig.DownedDuration = 30 -- Bleedout countdown
 GameConfig.ReviveDuration = 5.0 -- Hold duration to revive
-GameConfig.MaxEliminationsBeforeSpectator = 2 -- 1 free return, 2nd death = spectator
+GameConfig.MaxEliminationsBeforeSpectator = 2 -- 1 free return, 2nd elimination = spectator
+GameConfig.FreeReturnDelay = 5.0 -- Seconds before checkpoint return on first elimination
+
+-- Basement B1 Lift Puzzle & Encounter Tuning
+GameConfig.CrowbarPickupDuration = 2.0
+GameConfig.BeamPryDuration = 3.0
+GameConfig.CrawlerWarningDuration = 3.0
+GameConfig.GateCloseWarningDuration = 5.0
+GameConfig.ElevatorAscendDuration = 3.5
 
 -- Acoustic Detection Radii (in Studs)
 GameConfig.NoiseRadii = {
     Sprint = 35,
     Walk = 14,
     Crouch = 2, -- Near silent
+    CrowbarPry = 45,
+    ElevatorCall = 50,
     Gunshot = 80,
     DoorSlam = 40,
     ItemDrop = 20,
 }
 
--- Movement Speeds
+-- Movement Speeds (Studs/sec)
 GameConfig.WalkSpeed = 12
 GameConfig.SprintSpeed = 19
 GameConfig.CrouchSpeed = 6
@@ -53,7 +63,7 @@ GameConfig.Floors = {
         Name = "Basement B1: Boiler & Parking",
         FloorCode = "B1",
         DurationSeconds = calculateFloorDuration(0), -- 120s (2:00)
-        Description = "Solve the 4-symbol maintenance puzzle to restore elevator power.",
+        Description = "Clear the jammed elevator beam, restore generator power, and call the lift.",
         IsBossFloor = false,
         IsFinalFloor = false,
     },
@@ -150,4 +160,3 @@ GameConfig.Floors = {
 }
 
 return table.freeze(GameConfig)
-

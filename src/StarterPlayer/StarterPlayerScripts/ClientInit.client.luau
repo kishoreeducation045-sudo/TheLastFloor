@@ -1,8 +1,7 @@
 --!strict
 -- Client Bootstrap for THE LAST FLOOR – VACCINE PROTOCOL
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players      = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
 local localPlayer = Players.LocalPlayer
@@ -10,13 +9,13 @@ print(string.format("[ClientInit] Initializing client subsystems for %s...", loc
 
 local controllersFolder = script.Parent:WaitForChild("Controllers")
 
--- Controlled boot order
+-- Boot order matters: HUD first, then inventory, flashlight, generator, movement
 local bootOrder = {
     "HUDController",
     "InventoryController",
     "FlashlightController",
     "GeneratorController",
-    "MovementController"
+    "MovementController",
 }
 
 for _, modName in ipairs(bootOrder) do
@@ -36,7 +35,7 @@ for _, modName in ipairs(bootOrder) do
     end
 end
 
--- Atmosphere spawn hint with typewriter effect
+-- Atmospheric spawn hint with typewriter effect
 task.spawn(function()
     local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
     task.wait(1.5)
@@ -53,14 +52,8 @@ task.spawn(function()
     frame.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
     frame.BackgroundTransparency = 0.2
 
-    local fc = Instance.new("UICorner")
-    fc.CornerRadius = UDim.new(0, 8)
-    fc.Parent = frame
-
-    local fs = Instance.new("UIStroke")
-    fs.Color = Color3.fromRGB(80, 88, 105)
-    fs.Thickness = 1.5
-    fs.Parent = frame
+    local fc = Instance.new("UICorner") fc.CornerRadius = UDim.new(0, 8) fc.Parent = frame
+    local fs = Instance.new("UIStroke") fs.Color = Color3.fromRGB(80, 88, 105) fs.Thickness = 1.5 fs.Parent = frame
 
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, -24, 1, 0)
@@ -82,11 +75,8 @@ task.spawn(function()
 
     task.wait(2.0)
 
-    local fadeTween1 = TweenService:Create(frame, TweenInfo.new(0.8), {BackgroundTransparency = 1})
-    local fadeTween2 = TweenService:Create(lbl, TweenInfo.new(0.8), {TextTransparency = 1})
-    fadeTween1:Play()
-    fadeTween2:Play()
-
+    TweenService:Create(frame, TweenInfo.new(0.8), { BackgroundTransparency = 1 }):Play()
+    TweenService:Create(lbl, TweenInfo.new(0.8), { TextTransparency = 1 }):Play()
     task.wait(0.9)
     sg:Destroy()
 end)

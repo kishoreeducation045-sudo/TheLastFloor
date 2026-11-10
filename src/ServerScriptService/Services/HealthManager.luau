@@ -1,173 +1,265 @@
 --!strict
--- Authoritative Health, Downed, Revive and Elimination Service
--- Implements fall-to-ground downed state, 5-second revive, and checkpoint respawn.
+-- HealthManager.luau
+-- Authoritative player health, downed crawl state, 5s revive, 1 free checkpoint return, and permanent spectator transition.
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage.TheLastFloor.Configuration.GameConfig)
-local remotes = ReplicatedStorage.TheLastFloor.Remotes
-local playerDownedRemote = remotes:WaitForChild("PlayerDowned") :: RemoteEvent
-local playerRevivedRemote = remotes:WaitForChild("PlayerRevived") :: RemoteEvent
-local playerEliminatedRemote = remotes:WaitForChild("PlayerEliminated") :: RemoteEvent
+local remotes    = ReplicatedStorage.TheLastFloor.Remotes
+
+local downedRemote       = remotes:WaitForChild("PlayerDowned") :: RemoteEvent
+local revivedRemote      = remotes:WaitForChild("PlayerRevived") :: RemoteEvent
+local elimRemote         = remotes:WaitForChild("PlayerEliminated") :: RemoteEvent
 local setSpectatorRemote = remotes:WaitForChild("SetSpectatorMode") :: RemoteEvent
 
-type PlayerState = {
-    livesUsed: number,
+local HealthManager = {}
+
+export type PlayerState = {
     isDowned: boolean,
+    bleedoutRemaining: number,
     isSpectator: boolean,
-    bleedoutThread: thread?,
+    isReturning: boolean,
+    eliminations: number,
+    reviveProgress: number,
+    revivingPlayer: Player?,
 }
 
-local HealthManager = {}
 local playerStates: { [Player]: PlayerState } = {}
+local activeCheckpoint: CFrame = CFrame.new(60, 3.5, -55) * CFrame.Angles(0, math.rad(-90), 0)
 
-function HealthManager.Init()
-    local function onCharacterAdded(player: Player, character: Model)
-        local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-        local rootPart = character:WaitForChild("HumanoidRootPart") :: BasePart
+function HealthManager.SetCheckpoint(cf: CFrame)
+    activeCheckpoint = cf
+end
 
-        local state = playerStates[player]
-        if not state then return end
+function HealthManager.GetState(player: Player): PlayerState?
+    return playerStates[player]
+end
 
-        if state.isSpectator then
-            character:Destroy()
-            setSpectatorRemote:FireClient(player, true)
-            return
+function HealthManager.IsSpectator(player: Player): boolean
+    local s = playerStates[player]
+    return s ~= nil and s.isSpectator
+end
+
+function HealthManager.IsDowned(player: Player): boolean
+    local s = playerStates[player]
+    return s ~= nil and s.isDowned
+end
+
+function HealthManager.IsActivePlayer(player: Player): boolean
+    local s = playerStates[player]
+    if not s or s.isSpectator then
+        return false
+    end
+    return true
+end
+
+function HealthManager.onCharacterAdded(player: Player, character: Model)
+    local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+    local rootPart = character:WaitForChild("HumanoidRootPart") :: BasePart
+
+    -- Disable default Roblox auto-heal so damage & downed bleedout stay faithful to horror balance
+    local regenScript = character:FindFirstChild("Health")
+    if regenScript then
+        regenScript:Destroy()
+    end
+
+    local state = playerStates[player]
+    if not state then return end
+
+    if state.isSpectator then
+        task.defer(function()
+            if character and character.Parent then
+                character:Destroy()
+            end
+        end)
+        setSpectatorRemote:FireClient(player, true)
+        return
+    end
+
+    state.isDowned = false
+    state.isReturning = false
+    humanoid.MaxHealth = GameConfig.MaxHealth
+    humanoid.Health    = GameConfig.MaxHealth
+    humanoid.WalkSpeed = GameConfig.WalkSpeed
+    humanoid.JumpPower = 50
+    humanoid.PlatformStand = false
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+    humanoid.BreakJointsOnDeath = false
+
+    -- Authoritative checkpoint spawn inside active level
+    task.defer(function()
+        if rootPart and rootPart.Parent then
+            rootPart.CFrame = activeCheckpoint
         end
+    end)
 
-        state.isDowned = false
-        humanoid.WalkSpeed = GameConfig.WalkSpeed
+    -- Re-grant CrowbarTool if player already carried it before free return
+    if player:GetAttribute("HasCrowbar") == true then
+        local tlf = ReplicatedStorage:FindFirstChild("TheLastFloor")
+        local crowbarTemplate = tlf and tlf:FindFirstChild("CrowbarTool")
+        if crowbarTemplate then
+            local clone = crowbarTemplate:Clone()
+            clone.Parent = player:WaitForChild("Backpack")
+        end
+    end
+
+    local hookedDowned = false
+    humanoid.HealthChanged:Connect(function(health)
+        if health <= 0 and not hookedDowned and not state.isDowned and not state.isSpectator then
+            hookedDowned = true
+            state.isDowned = true
+            humanoid.Health = 1
+            humanoid.WalkSpeed = 0
+            humanoid.JumpPower = 0
+            humanoid.JumpHeight = 0
+
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+            humanoid.PlatformStand = true
+            humanoid:ChangeState(Enum.HumanoidStateType.FallingDown)
+
+            task.defer(function()
+                if rootPart and rootPart.Parent then
+                    rootPart.CFrame = rootPart.CFrame * CFrame.Angles(math.rad(-85), 0, 0)
+                end
+            end)
+
+            downedRemote:FireAllClients(player, GameConfig.DownedDuration)
+            state.bleedoutRemaining = GameConfig.DownedDuration
+
+            local prompt = Instance.new("ProximityPrompt")
+            prompt.Name = "RevivePrompt"
+            prompt.ActionText = "Revive Teammate"
+            prompt.ObjectText = player.DisplayName
+            prompt.HoldDuration = GameConfig.ReviveDuration
+            prompt.MaxActivationDistance = 8
+            prompt.RequiresLineOfSight = false
+            prompt.Parent = rootPart
+
+            local promptConn: RBXScriptConnection?
+            promptConn = prompt.Triggered:Connect(function(revivingPlayer: Player)
+                if revivingPlayer ~= player and not HealthManager.IsDowned(revivingPlayer) and not HealthManager.IsSpectator(revivingPlayer) then
+                    hookedDowned = false
+                    HealthManager.RevivePlayer(player)
+                    if promptConn then promptConn:Disconnect() end
+                    if prompt and prompt.Parent then prompt:Destroy() end
+                end
+            end)
+
+            task.spawn(function()
+                while state.isDowned and state.bleedoutRemaining > 0 and player.Parent == Players do
+                    task.wait(1)
+                    state.bleedoutRemaining -= 1
+                end
+
+                if state.isDowned and state.bleedoutRemaining <= 0 and player.Parent == Players then
+                    if prompt and prompt.Parent then prompt:Destroy() end
+                    HealthManager.EliminatePlayer(player)
+                end
+            end)
+        end
+    end)
+end
+
+function HealthManager.RevivePlayer(player: Player)
+    local state = playerStates[player]
+    if not state or not state.isDowned then return end
+
+    state.isDowned = false
+    local character = player.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+
+    if humanoid and rootPart then
         humanoid.PlatformStand = false
         humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-        humanoid.BreakJointsOnDeath = false
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        humanoid.Health = GameConfig.RevivedHealth
+        humanoid.WalkSpeed = GameConfig.WalkSpeed
+        humanoid.JumpPower = 50
+        rootPart.CFrame = CFrame.new(rootPart.Position.X, 3.5, rootPart.Position.Z)
 
-        -- Authoritative spawn inside basement beside motorcycle facing into the room
-        task.defer(function()
-            if rootPart and rootPart.Parent then
-                rootPart.CFrame = CFrame.new(60, 3.5, -55) * CFrame.Angles(0, math.rad(-90), 0)
+        local oldPrompt = rootPart:FindFirstChild("RevivePrompt")
+        if oldPrompt then oldPrompt:Destroy() end
+    end
+
+    revivedRemote:FireAllClients(player, GameConfig.RevivedHealth)
+    print(string.format("[HealthManager] %s was revived with %d HP", player.Name, GameConfig.RevivedHealth))
+end
+
+function HealthManager.EliminatePlayer(player: Player)
+    local state = playerStates[player]
+    if not state or state.isSpectator then return end
+
+    state.isDowned = false
+    state.eliminations += 1
+    player:SetAttribute("Eliminations", state.eliminations)
+
+    local character = player.Character
+    if character then
+        character:Destroy()
+    end
+
+    -- Grant 1 Free Return on first elimination (MaxEliminationsBeforeSpectator == 2)
+    if state.eliminations < GameConfig.MaxEliminationsBeforeSpectator then
+        state.isReturning = true
+        local delaySec = GameConfig.FreeReturnDelay or 5.0
+        elimRemote:FireAllClients(player, true, delaySec)
+        print(string.format("[HealthManager] %s downed-out #1 -> Free checkpoint return in %.1fs", player.Name, delaySec))
+
+        task.delay(delaySec, function()
+            if player.Parent == Players and not state.isSpectator then
+                state.isReturning = false
+                player:LoadCharacter()
             end
         end)
+    else
+        state.isReturning = false
+        state.isSpectator = true
+        elimRemote:FireAllClients(player, false, 0)
+        setSpectatorRemote:FireClient(player, true)
+        print(string.format("[HealthManager] %s eliminated #%d -> Permanent Spectator", player.Name, state.eliminations))
+    end
+end
 
-        humanoid.HealthChanged:Connect(function(health)
-            if health <= 0 and not state.isDowned and not state.isSpectator then
-                -- Enter downed state: Fall to the ground limp
-                state.isDowned = true
-                humanoid.Health = 1
-                humanoid.WalkSpeed = 0
-                humanoid.JumpPower = 0
-                humanoid.JumpHeight = 0
+local function registerPlayer(player: Player)
+    if playerStates[player] then return end
+    playerStates[player] = {
+        isDowned          = false,
+        bleedoutRemaining = GameConfig.DownedDuration,
+        isSpectator       = false,
+        isReturning       = false,
+        eliminations      = 0,
+        reviveProgress    = 0,
+        revivingPlayer    = nil,
+    }
+    player:SetAttribute("Eliminations", 0)
 
-                -- Physics fall down: Disable getting up & enable PlatformStand
-                humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-                humanoid.PlatformStand = true
-                humanoid:ChangeState(Enum.HumanoidStateType.FallingDown)
+    player.CharacterAdded:Connect(function(char)
+        HealthManager.onCharacterAdded(player, char)
+    end)
 
-                -- Tilt character onto the floor
-                task.defer(function()
-                    if rootPart and rootPart.Parent then
-                        rootPart.CFrame = rootPart.CFrame * CFrame.Angles(math.rad(-85), 0, 0)
-                    end
-                end)
-
-                playerDownedRemote:FireAllClients(player, GameConfig.DownedDuration)
-
-                -- 5-second hold ProximityPrompt for teammates
-                local prompt = Instance.new("ProximityPrompt")
-                prompt.Name = "RevivePrompt"
-                prompt.ActionText = "Revive Teammate"
-                prompt.ObjectText = player.DisplayName
-                prompt.HoldDuration = 5.0 -- Exactly 5 seconds
-                prompt.MaxActivationDistance = 9
-                prompt.RequiresLineOfSight = false
-                prompt.Parent = rootPart
-
-                local promptConn: RBXScriptConnection
-                promptConn = prompt.Triggered:Connect(function(revivingPlayer)
-                    if revivingPlayer ~= player and state.isDowned then
-                        state.isDowned = false
-                        if prompt then prompt:Destroy() end
-                        if promptConn then promptConn:Disconnect() end
-                        if state.bleedoutThread then
-                            task.cancel(state.bleedoutThread)
-                            state.bleedoutThread = nil
-                        end
-
-                        -- Restore player upright
-                        humanoid.PlatformStand = false
-                        humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-                        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-                        if rootPart and rootPart.Parent then
-                            rootPart.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y + 3, rootPart.Position.Z)
-                        end
-
-                        humanoid.Health = GameConfig.RevivedHealth
-                        humanoid.WalkSpeed = GameConfig.WalkSpeed
-                        humanoid.JumpPower = 50
-                        humanoid.JumpHeight = 7.2
-
-                        playerRevivedRemote:FireAllClients(player, revivingPlayer)
-                        print(string.format("[HealthManager] %s was revived by %s (Restored to %d HP)", player.Name, revivingPlayer.Name, GameConfig.RevivedHealth))
-                    end
-                end)
-
-                -- 30s Bleedout Timer
-                state.bleedoutThread = task.spawn(function()
-                    task.wait(GameConfig.DownedDuration)
-                    if state.isDowned then
-                        if prompt then prompt:Destroy() end
-                        if promptConn then promptConn:Disconnect() end
-                        state.isDowned = false
-                        state.livesUsed += 1
-
-                        local isFinalDeath = (state.livesUsed >= GameConfig.MaxEliminationsBeforeSpectator)
-                        playerEliminatedRemote:FireAllClients(player, isFinalDeath)
-
-                        if isFinalDeath then
-                            state.isSpectator = true
-                            setSpectatorRemote:FireClient(player, true)
-                            character:Destroy()
-                            print(string.format("[HealthManager] %s eliminated (Moved to Spectator)", player.Name))
-                        else
-                            -- 1 Free return respawn at checkpoint
-                            character:Destroy()
-                            task.wait(GameConfig.FreeReturnDelay)
-                            player:LoadCharacter()
-                            print(string.format("[HealthManager] %s used free return checkpoint", player.Name))
-                        end
-                    end
-                end)
-            end
+    if player.Character then
+        task.spawn(function()
+            HealthManager.onCharacterAdded(player, player.Character)
         end)
     end
+end
 
-    local function onPlayerAdded(player: Player)
-        playerStates[player] = {
-            livesUsed = 0,
-            isDowned = false,
-            isSpectator = false,
-            bleedoutThread = nil,
-        }
-
-        player.CharacterAdded:Connect(function(char)
-            onCharacterAdded(player, char)
-        end)
-
-        if player.Character then
-            onCharacterAdded(player, player.Character)
-        end
+function HealthManager.Init()
+    for _, existing in ipairs(Players:GetPlayers()) do
+        registerPlayer(existing)
     end
 
-    Players.PlayerAdded:Connect(onPlayerAdded)
-    for _, p in ipairs(Players:GetPlayers()) do
-        onPlayerAdded(p)
-    end
+    Players.PlayerAdded:Connect(registerPlayer)
 
     Players.PlayerRemoving:Connect(function(player)
         playerStates[player] = nil
     end)
 
-    print("[HealthManager] Initialized with Fall-to-Ground Downed state & 5s Revive.")
+    print("[HealthManager] Initialized with Downed crawl, 5s Revive, 1 Free Return & Spectator mode.")
 end
 
 return HealthManager
