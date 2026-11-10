@@ -421,39 +421,80 @@ local function cancelLightingFlicker()
     table.clear(activeLampThreads)
 end
 
-local function applyHorrorLightingEnvironment(isGeneratorPowered: boolean)
+-- ATMOSPHERE MODE (Easily switch between DAYLIGHT and DARK HORROR)
+local USE_DAYLIGHT_ATMOSPHERE = true -- Set to false later to return to dark horror atmosphere
+
+local function applyAtmosphereLighting(isGeneratorPowered: boolean)
     local l = Lighting
-    l.Brightness = 0.12
-    l.Ambient = Color3.fromRGB(6, 8, 10)
-    l.OutdoorAmbient = Color3.fromRGB(2, 3, 4)
-    l.FogColor = Color3.fromRGB(4, 6, 8)
-    l.FogStart = 8
-    l.FogEnd = isGeneratorPowered and 85 or 65
-    l.GlobalShadows = true
+    if USE_DAYLIGHT_ATMOSPHERE then
+        l.ClockTime = 14.0
+        l.Brightness = 2.5
+        l.Ambient = Color3.fromRGB(150, 150, 150)
+        l.OutdoorAmbient = Color3.fromRGB(140, 140, 140)
+        l.FogColor = Color3.fromRGB(200, 220, 240)
+        l.FogStart = 500
+        l.FogEnd = 100000
+        l.GlobalShadows = true
 
-    local hcg = l:FindFirstChild("HorrorColorGrade") :: ColorCorrectionEffect?
-    if hcg then
-        hcg.Enabled = true
-        hcg.Contrast = 0.32
-        hcg.Saturation = -0.38
-        hcg.TintColor = Color3.fromRGB(195, 205, 205)
-        hcg.Brightness = 0
-    end
+        local hcg = l:FindFirstChild("HorrorColorGrade") :: ColorCorrectionEffect?
+        if hcg then
+            hcg.Enabled = false
+            hcg.Contrast = 0.05
+            hcg.Saturation = 0.05
+            hcg.TintColor = Color3.fromRGB(255, 255, 255)
+            hcg.Brightness = 0
+        end
 
-    local bloom = l:FindFirstChild("Bloom") :: BloomEffect?
-    if bloom then
-        bloom.Enabled = true
-        bloom.Intensity = 0.85
-        bloom.Size = 36
-        bloom.Threshold = 0.95
-    end
+        local bloom = l:FindFirstChild("Bloom") :: BloomEffect?
+        if bloom then
+            bloom.Enabled = true
+            bloom.Intensity = 0.35
+            bloom.Size = 24
+            bloom.Threshold = 1.1
+        end
 
-    local atmo = l:FindFirstChild("Atmosphere") :: Atmosphere?
-    if atmo then
-        atmo.Density = 0.42
-        atmo.Haze = 3.2
-        atmo.Color = Color3.fromRGB(12, 16, 18)
-        atmo.Decay = Color3.fromRGB(3, 4, 5)
+        local atmo = l:FindFirstChild("Atmosphere") :: Atmosphere?
+        if atmo then
+            atmo.Density = 0.2
+            atmo.Haze = 0
+            atmo.Color = Color3.fromRGB(199, 175, 166)
+            atmo.Decay = Color3.fromRGB(104, 112, 125)
+            atmo.Glare = 0
+        end
+    else
+        l.ClockTime = 0.0
+        l.Brightness = 0.12
+        l.Ambient = Color3.fromRGB(6, 8, 10)
+        l.OutdoorAmbient = Color3.fromRGB(2, 3, 4)
+        l.FogColor = Color3.fromRGB(4, 6, 8)
+        l.FogStart = 8
+        l.FogEnd = isGeneratorPowered and 85 or 65
+        l.GlobalShadows = true
+
+        local hcg = l:FindFirstChild("HorrorColorGrade") :: ColorCorrectionEffect?
+        if hcg then
+            hcg.Enabled = true
+            hcg.Contrast = 0.32
+            hcg.Saturation = -0.38
+            hcg.TintColor = Color3.fromRGB(195, 205, 205)
+            hcg.Brightness = 0
+        end
+
+        local bloom = l:FindFirstChild("Bloom") :: BloomEffect?
+        if bloom then
+            bloom.Enabled = true
+            bloom.Intensity = 0.85
+            bloom.Size = 36
+            bloom.Threshold = 0.95
+        end
+
+        local atmo = l:FindFirstChild("Atmosphere") :: Atmosphere?
+        if atmo then
+            atmo.Density = 0.42
+            atmo.Haze = 3.2
+            atmo.Color = Color3.fromRGB(12, 16, 18)
+            atmo.Decay = Color3.fromRGB(3, 4, 5)
+        end
     end
 end
 
@@ -537,10 +578,10 @@ local function activateEmergencyLightsAndGenerator()
         if pl then pl.Color = Color3.fromRGB(40, 255, 80) end
     end
 
-    -- 4. Scary, Terrifying Horror Environment (Pitch black ambient with dense claustrophobic fog)
-    applyHorrorLightingEnvironment(true)
+    -- 4. Apply Atmosphere Lighting (Daylight or Dark Horror)
+    applyAtmosphereLighting(true)
 
-    -- 5. 100% Full Brightness Ceiling Lights with Fully Erratic Industrial Horror Flickering
+    -- 5. High-Intensity Ultra-Bright Ceiling Lights with Fully Erratic Industrial Horror Flickering
     cancelLightingFlicker()
     lightingFlickerRunning = true
 
@@ -563,13 +604,13 @@ local function activateEmergencyLightsAndGenerator()
             local glow = lampModel:FindFirstChildWhichIsA("PointLight", true)
             local bulb = lampModel:FindFirstChild("LampBulb", true) :: BasePart?
             if spot and glow then
-                spot.Range = 38
-                spot.Angle = 76
-                spot.Color = Color3.fromRGB(235, 230, 215)
+                spot.Range = 48
+                spot.Angle = 80
+                spot.Color = Color3.fromRGB(255, 252, 235)
                 spot.Shadows = true
 
-                glow.Range = 24
-                glow.Color = Color3.fromRGB(230, 225, 200)
+                glow.Range = 32
+                glow.Color = Color3.fromRGB(255, 245, 220)
                 glow.Shadows = true
 
                 table.insert(lampList, {
@@ -577,8 +618,8 @@ local function activateEmergencyLightsAndGenerator()
                     bulb = bulb,
                     spot = spot,
                     glow = glow,
-                    baseSpotBrightness = 2.8,  -- 100% Full industrial power
-                    baseGlowBrightness = 1.35, -- 100% Full ambient glow
+                    baseSpotBrightness = 6.0,  -- High-intensity ultra-bright industrial beam
+                    baseGlowBrightness = 3.0,  -- High-intensity wide ambient glow
                 })
             end
         end
@@ -1173,7 +1214,7 @@ function FloorManager.StartFloor(floorIndex: number)
     FloorManager.IsActive = true
 
     cancelLightingFlicker()
-    applyHorrorLightingEnvironment(false)
+    applyAtmosphereLighting(false)
 
     -- Extinguish ceiling lights until generator restore
     local b1 = getB1()
