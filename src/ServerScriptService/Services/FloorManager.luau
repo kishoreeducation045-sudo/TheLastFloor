@@ -52,6 +52,7 @@ local activeCrawler: Model? = nil
 local timerThread: thread? = nil
 local generatorVibrationRunning = false
 local lightingFlickerRunning = false
+local activeLampThreads: { thread } = {}
 
 -- Server-side anti-cheat session tracking
 local activePuzzleOrders: { [Player]: { number } } = {}
@@ -412,6 +413,50 @@ local function handleOpenGeneratorRequest(player: Player)
     openGenPuzzleRemote:FireClient(player, order)
 end
 
+local function cancelLightingFlicker()
+    lightingFlickerRunning = false
+    for _, th in ipairs(activeLampThreads) do
+        task.cancel(th)
+    end
+    table.clear(activeLampThreads)
+end
+
+local function applyHorrorLightingEnvironment(isGeneratorPowered: boolean)
+    local l = Lighting
+    l.Brightness = 0.12
+    l.Ambient = Color3.fromRGB(6, 8, 10)
+    l.OutdoorAmbient = Color3.fromRGB(2, 3, 4)
+    l.FogColor = Color3.fromRGB(4, 6, 8)
+    l.FogStart = 8
+    l.FogEnd = isGeneratorPowered and 85 or 65
+    l.GlobalShadows = true
+
+    local hcg = l:FindFirstChild("HorrorColorGrade") :: ColorCorrectionEffect?
+    if hcg then
+        hcg.Enabled = true
+        hcg.Contrast = 0.32
+        hcg.Saturation = -0.38
+        hcg.TintColor = Color3.fromRGB(195, 205, 205)
+        hcg.Brightness = 0
+    end
+
+    local bloom = l:FindFirstChild("Bloom") :: BloomEffect?
+    if bloom then
+        bloom.Enabled = true
+        bloom.Intensity = 0.85
+        bloom.Size = 36
+        bloom.Threshold = 0.95
+    end
+
+    local atmo = l:FindFirstChild("Atmosphere") :: Atmosphere?
+    if atmo then
+        atmo.Density = 0.42
+        atmo.Haze = 3.2
+        atmo.Color = Color3.fromRGB(12, 16, 18)
+        atmo.Decay = Color3.fromRGB(3, 4, 5)
+    end
+end
+
 local function activateEmergencyLightsAndGenerator()
     local b1 = getB1()
     if not b1 then return end
@@ -419,20 +464,21 @@ local function activateEmergencyLightsAndGenerator()
     -- 1. Generator Engine Sound & Physical Vibration
     local genPart = b1:FindFirstChild("Generator") :: BasePart?
     local genTop = b1:FindFirstChild("Generator_Top") :: BasePart?
+    local engineSound: Sound? = nil
     if genPart then
-        local sound = genPart:FindFirstChild("EngineLoop") :: Sound?
-        if not sound then
-            sound = Instance.new("Sound")
-            sound.Name = "EngineLoop"
-            sound.SoundId = "rbxassetid://138090596"
-            sound.PlaybackSpeed = 0.35
-            sound.Looped = true
-            sound.Volume = 0.65
-            sound.RollOffMaxDistance = 60
-            sound.RollOffMinDistance = 6
-            sound.Parent = genPart
+        engineSound = genPart:FindFirstChild("EngineLoop") :: Sound?
+        if not engineSound then
+            engineSound = Instance.new("Sound")
+            engineSound.Name = "EngineLoop"
+            engineSound.SoundId = "rbxassetid://138090596"
+            engineSound.PlaybackSpeed = 0.35
+            engineSound.Looped = true
+            engineSound.Volume = 0.75
+            engineSound.RollOffMaxDistance = 65
+            engineSound.RollOffMinDistance = 6
+            engineSound.Parent = genPart
         end
-        sound:Play()
+        engineSound:Play()
 
         if not generatorVibrationRunning then
             generatorVibrationRunning = true
@@ -491,72 +537,175 @@ local function activateEmergencyLightsAndGenerator()
         if pl then pl.Color = Color3.fromRGB(40, 255, 80) end
     end
 
-    -- 4. 20% Dim emergency ceiling lighting (strobe then stabilize + subtle 3-5s flicker)
+    -- 4. Scary, Terrifying Horror Environment (Pitch black ambient with dense claustrophobic fog)
+    applyHorrorLightingEnvironment(true)
+
+    -- 5. 100% Full Brightness Ceiling Lights with Fully Erratic Industrial Horror Flickering
+    cancelLightingFlicker()
+    lightingFlickerRunning = true
+
     task.spawn(function()
-        local spots: { SpotLight } = {}
-        local glows: { PointLight } = {}
-        for _, d in ipairs(b1:GetDescendants()) do
-            if d:IsA("SpotLight") and d.Name == "CeilingLight" then
-                table.insert(spots, d)
-            elseif d:IsA("PointLight") and d.Name == "CeilingLightGlow" then
-                table.insert(glows, d)
+        local lampsFolder = b1:FindFirstChild("PendantLamps")
+        if not lampsFolder then return end
+
+        type LampData = {
+            model: Instance,
+            bulb: BasePart?,
+            spot: SpotLight,
+            glow: PointLight,
+            baseSpotBrightness: number,
+            baseGlowBrightness: number,
+        }
+
+        local lampList: { LampData } = {}
+        for _, lampModel in ipairs(lampsFolder:GetChildren()) do
+            local spot = lampModel:FindFirstChildWhichIsA("SpotLight", true)
+            local glow = lampModel:FindFirstChildWhichIsA("PointLight", true)
+            local bulb = lampModel:FindFirstChild("LampBulb", true) :: BasePart?
+            if spot and glow then
+                spot.Range = 38
+                spot.Angle = 76
+                spot.Color = Color3.fromRGB(235, 230, 215)
+                spot.Shadows = true
+
+                glow.Range = 24
+                glow.Color = Color3.fromRGB(230, 225, 200)
+                glow.Shadows = true
+
+                table.insert(lampList, {
+                    model = lampModel,
+                    bulb = bulb,
+                    spot = spot,
+                    glow = glow,
+                    baseSpotBrightness = 2.8,  -- 100% Full industrial power
+                    baseGlowBrightness = 1.35, -- 100% Full ambient glow
+                })
             end
         end
 
-        for i = 1, 5 do
-            local on = (i % 2 == 1)
-            for _, s in ipairs(spots) do
-                s.Enabled = on
-                s.Brightness = on and 0.4 or 0
+        local function setLampPower(lamp: LampData, ratio: number)
+            local bSpot = lamp.baseSpotBrightness * ratio
+            local bGlow = lamp.baseGlowBrightness * ratio
+            lamp.spot.Brightness = bSpot
+            lamp.spot.Enabled = bSpot > 0.05
+            lamp.glow.Brightness = bGlow
+            lamp.glow.Enabled = bGlow > 0.05
+            if lamp.bulb then
+                if ratio > 0.1 then
+                    lamp.bulb.Material = Enum.Material.Neon
+                    lamp.bulb.Transparency = math.clamp(0.05 + (1 - ratio) * 0.4, 0.05, 0.7)
+                    lamp.bulb.Color = Color3.fromRGB(255, 245, 220)
+                else
+                    lamp.bulb.Material = Enum.Material.SmoothPlastic
+                    lamp.bulb.Transparency = 0.85
+                    lamp.bulb.Color = Color3.fromRGB(50, 50, 48)
+                end
             end
-            for _, g in ipairs(glows) do
-                g.Enabled = on
-                g.Brightness = on and 0.2 or 0
-            end
-            task.wait(0.1 + (i * 0.03))
         end
 
-        for _, s in ipairs(spots) do
-            s.Enabled = true
-            s.Brightness = 0.4
-            s.Range = 28
-            s.Angle = 70
-            s.Color = Color3.fromRGB(240, 220, 180)
-        end
-        for _, g in ipairs(glows) do
-            g.Enabled = true
-            g.Brightness = 0.2
-            g.Range = 16
-            g.Color = Color3.fromRGB(240, 215, 175)
+        -- Initial Power Surge Sequence (Chaotic 1.6s ignition stutter across all lamps)
+        if genPart then
+            playWorldSound(genPart, "rbxassetid://138090596", 0.8, 1.25, false, 80)
         end
 
-        if not lightingFlickerRunning then
-            lightingFlickerRunning = true
-            task.spawn(function()
-                while generatorRestored and FloorManager.IsActive do
-                    task.wait(3.0 + math.random() * 2.0)
-                    if #spots > 0 and not elevatorCalled then
-                        local idx = math.random(1, #spots)
-                        local sp = spots[idx]
-                        local gl = glows[idx]
-                        if sp then sp.Brightness = 0.1 end
-                        if gl then gl.Brightness = 0.05 end
+        for step = 1, 6 do
+            local on = (step % 2 == 1)
+            local pwr = on and (step == 5 and 1.15 or 0.7) or 0
+            for _, l in ipairs(lampList) do
+                setLampPower(l, pwr)
+            end
+            task.wait(0.04 + (step * 0.025))
+        end
+
+        -- Bring all lamps to full 100% brightness
+        for _, l in ipairs(lampList) do
+            setLampPower(l, 1.0)
+        end
+
+        -- Launch Asynchronous Horror Flicker Coroutine for each lamp individually
+        for _, lamp in ipairs(lampList) do
+            local th = task.spawn(function()
+                while generatorRestored and lightingFlickerRunning and FloorManager.IsActive do
+                    -- Steady 100% burn period between erratic flickers (0.4s to 2.4s)
+                    task.wait(0.4 + math.random() * 2.0)
+                    if not generatorRestored or not lightingFlickerRunning or elevatorCalled then break end
+
+                    local roll = math.random()
+                    if roll < 0.42 then
+                        -- PATTERN A: Rapid Micro-Strobe / Glitch (3 to 6 violent micro-bursts at 25-35Hz)
+                        local bursts = math.random(3, 6)
+                        for _ = 1, bursts do
+                            local lvl = math.random() < 0.5 and 0.05 or (1.0 + (math.random() - 0.5) * 0.4)
+                            setLampPower(lamp, lvl)
+                            task.wait(0.02 + math.random() * 0.03)
+                        end
+                        setLampPower(lamp, 1.0)
+
+                    elseif roll < 0.72 then
+                        -- PATTERN B: Sudden Blackout / Pitch-Black Drop (0.3s to 1.3s total darkness)
+                        setLampPower(lamp, 0)
+                        task.wait(0.3 + math.random() * 1.0)
+                        if generatorRestored and lightingFlickerRunning and not elevatorCalled then
+                            -- Pop back on with sudden surge
+                            if lamp.bulb and math.random() < 0.35 then
+                                playWorldSound(lamp.bulb, "rbxassetid://138090596", 0.35, 1.3, false, 35)
+                            end
+                            setLampPower(lamp, 1.2)
+                            task.wait(0.06)
+                            setLampPower(lamp, 1.0)
+                        end
+
+                    elseif roll < 0.90 then
+                        -- PATTERN C: Voltage Sag / Brownout (0.6s to 1.6s dim sickly glow)
+                        setLampPower(lamp, 0.25 + math.random() * 0.15)
+                        task.wait(0.6 + math.random() * 1.0)
+                        if generatorRestored and lightingFlickerRunning and not elevatorCalled then
+                            setLampPower(lamp, 1.0)
+                        end
+
+                    else
+                        -- PATTERN D: High-Voltage Surge Flare
+                        setLampPower(lamp, 1.35)
                         task.wait(0.06)
-                        if sp then sp.Brightness = 0.4 end
-                        if gl then gl.Brightness = 0.2 end
+                        setLampPower(lamp, 1.0)
                     end
                 end
-                lightingFlickerRunning = false
             end)
+            table.insert(activeLampThreads, th)
         end
-    end)
 
-    TweenService:Create(Lighting, TweenInfo.new(1.2), {
-        Brightness = 0.35,
-        Ambient = Color3.fromRGB(24, 26, 30),
-        OutdoorAmbient = Color3.fromRGB(15, 17, 20),
-        FogEnd = 120
-    }):Play()
+        -- Global Power Grid Shudder / Generator Engine Dip (Every 8-14s)
+        local globalGridThread = task.spawn(function()
+            while generatorRestored and lightingFlickerRunning and FloorManager.IsActive do
+                task.wait(8.0 + math.random() * 6.0)
+                if not generatorRestored or not lightingFlickerRunning or elevatorCalled then break end
+
+                -- Generator stumbles
+                if engineSound then
+                    engineSound.PlaybackSpeed = 0.25
+                end
+                if genPart then
+                    playWorldSound(genPart, "rbxassetid://138090596", 0.6, 0.7, false, 70)
+                end
+
+                -- Entire basement drops into pitch-black terror
+                for _, l in ipairs(lampList) do
+                    setLampPower(l, 0.05)
+                end
+
+                task.wait(0.2 + math.random() * 0.3)
+
+                -- Power snaps back
+                if engineSound then
+                    engineSound.PlaybackSpeed = 0.35
+                end
+                for _, l in ipairs(lampList) do
+                    setLampPower(l, 1.0)
+                end
+            end
+        end)
+        table.insert(activeLampThreads, globalGridThread)
+    end)
 end
 
 local function handleGeneratorFixed(player: Player, submittedConnections: any)
@@ -590,7 +739,7 @@ local function handleGeneratorFixed(player: Player, submittedConnections: any)
 
     activateEmergencyLightsAndGenerator()
     updateElevatorSignage()
-    broadcastObjectiveState(nil, "OBJECTIVE 2 COMPLETE — Emergency power grid online at 20%!", Color3.fromRGB(255, 195, 50))
+    broadcastObjectiveState(nil, "OBJECTIVE 2 COMPLETE — Emergency power grid restored to 100%!", Color3.fromRGB(255, 195, 50))
     print("[FloorManager] Stage 2 complete: Generator restored & verified by server.")
 end
 
@@ -767,6 +916,7 @@ local function finalizeAndTransitionToFloor1()
     end)
 
     FloorManager.IsActive = false
+    cancelLightingFlicker()
     if timerThread then
         task.cancel(timerThread)
         timerThread = nil
@@ -865,32 +1015,58 @@ local function onElevatorCalled(player: Player)
     elevWarningRemote:FireAllClients(warnTime, "⚠ LIFT NOISE ALERTED SOMETHING IN THE DARK!")
     broadcastObjectiveState("Lift dispatched — WATCH THE SHADOWS!", "⚠ MOVEMENT DETECTED — DEFENSIVE POSITIONS!", Color3.fromRGB(255, 65, 65))
 
-    -- 3-second audio & red/dim lighting warning sequence before Crawler reveals & doors open
+    -- 3-second audio & blood-red frantic emergency warning sequence before Crawler reveals & doors open
     task.spawn(function()
+        cancelLightingFlicker()
+
         local spots: { SpotLight } = {}
+        local glows: { PointLight } = {}
+        local bulbs: { BasePart } = {}
         if b1 then
             for _, d in ipairs(b1:GetDescendants()) do
                 if d:IsA("SpotLight") and d.Name == "CeilingLight" then
                     table.insert(spots, d)
+                elseif d:IsA("PointLight") and d.Name == "CeilingLightGlow" then
+                    table.insert(glows, d)
+                elseif d:IsA("BasePart") and d.Name == "LampBulb" then
+                    table.insert(bulbs, d)
                 end
             end
         end
 
-        for pulse = 1, 6 do
+        for pulse = 1, 8 do
             local isRed = (pulse % 2 == 1)
             for _, s in ipairs(spots) do
-                s.Color = isRed and Color3.fromRGB(255, 55, 55) or Color3.fromRGB(240, 220, 180)
-                s.Brightness = isRed and 0.55 or 0.15
+                s.Enabled = true
+                s.Color = isRed and Color3.fromRGB(255, 35, 35) or Color3.fromRGB(160, 20, 20)
+                s.Brightness = isRed and 2.6 or 0.15
+                s.Shadows = true
+            end
+            for _, g in ipairs(glows) do
+                g.Enabled = true
+                g.Color = isRed and Color3.fromRGB(255, 30, 30) or Color3.fromRGB(130, 15, 15)
+                g.Brightness = isRed and 1.3 or 0.05
+                g.Shadows = true
+            end
+            for _, b in ipairs(bulbs) do
+                b.Color = isRed and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(60, 20, 20)
+                b.Transparency = isRed and 0.05 or 0.85
             end
             if callBtn and pulse % 2 == 1 then
-                playWorldSound(callBtn, "rbxassetid://6895079853", 0.75, 0.65, false, 90)
+                playWorldSound(callBtn, "rbxassetid://6895079853", 0.85, 0.65, false, 90)
             end
-            task.wait(warnTime / 6)
+            task.wait(warnTime / 8)
         end
 
         for _, s in ipairs(spots) do
-            s.Color = Color3.fromRGB(240, 220, 180)
-            s.Brightness = 0.4
+            s.Color = Color3.fromRGB(235, 55, 40)
+            s.Brightness = 1.8
+            s.Shadows = true
+        end
+        for _, g in ipairs(glows) do
+            g.Color = Color3.fromRGB(215, 45, 30)
+            g.Brightness = 0.9
+            g.Shadows = true
         end
 
         if not FloorManager.IsActive then return end
@@ -996,6 +1172,36 @@ function FloorManager.StartFloor(floorIndex: number)
     FloorManager.TimeRemaining = data.DurationSeconds
     FloorManager.IsActive = true
 
+    cancelLightingFlicker()
+    applyHorrorLightingEnvironment(false)
+
+    -- Extinguish ceiling lights until generator restore
+    local b1 = getB1()
+    if b1 then
+        for _, d in ipairs(b1:GetDescendants()) do
+            if d:IsA("SpotLight") and d.Name == "CeilingLight" then
+                d.Enabled = false
+                d.Brightness = 0
+            elseif d:IsA("PointLight") and d.Name == "CeilingLightGlow" then
+                d.Enabled = false
+                d.Brightness = 0
+            elseif d:IsA("BasePart") and d.Name == "LampBulb" then
+                d.Material = Enum.Material.SmoothPlastic
+                d.Transparency = 0.85
+                d.Color = Color3.fromRGB(50, 50, 48)
+            end
+        end
+    end
+
+    -- Authoritative spawn safety: Ensure all active squad members start inside Basement B1
+    local checkpointCf = CFrame.new(60, 3.5, -55) * CFrame.Angles(0, math.rad(-90), 0)
+    for _, p in ipairs(Players:GetPlayers()) do
+        local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+        if hrp then
+            hrp.CFrame = checkpointCf
+        end
+    end
+
     doorUnjammed = false
     generatorRestored = false
     elevatorCalled = false
@@ -1031,6 +1237,7 @@ end
 
 function FloorManager.OnTimerExpired()
     FloorManager.IsActive = false
+    cancelLightingFlicker()
     floorTimerRemote:FireAllClients(0)
     print("[FloorManager] Timer expired — floor failure triggered.")
     broadcastObjectiveState("TIME EXPIRED — Gas breach!", "CRITICAL FAILURE — BASEMENT LOCKDOWN COLLAPSE!", Color3.fromRGB(255, 35, 35))

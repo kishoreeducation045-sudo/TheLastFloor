@@ -40,7 +40,7 @@ Stage 1 and Stage 2 may be completed **in either order**; **both are mandatory**
    - Supports **Mouse, Touch, and Keyboard** (`1-3`, `4-6`, Arrows/`WASD`, `Tab`, `Enter`/`Space`, `Esc`).
    - Incorrect pairs flash red, shake the panel, play fault buzz, and stay rusted.
    - Correct pairs strip rust to reveal Neon Red/Blue/Yellow, draw 3-layer glowing cables, lock LEDs, and validate exact port indices on server (`GeneratorFixed`).
-3. Completion sets `ElevatorPower = true`, plays looped generator sound + subtle chassis vibration + 3-second exhaust smoke burst, turns generator light green, strobes and settles 11 ceiling fixtures to **20% dim glow** (`SpotLight.Brightness = 0.4`, `PointLight.Brightness = 0.2`) with periodic flicker, and updates `ElevatorIndicator` to amber.
+3. Completion sets `ElevatorPower = true`, plays looped generator sound + subtle chassis vibration + 3-second exhaust smoke burst, turns generator light green, and ignites the 11 ceiling fixtures to **100% full industrial power** (`SpotLight.Brightness = 2.8`, `Range = 38`, `Shadows = true`, `PointLight.Brightness = 1.35`, `Range = 24`, `Shadows = true`, `Neon` glowing bulbs) with violent, erratic multi-lamp industrial horror flickering (asynchronous micro-strobe bursts at 25-35Hz, pitch-black sudden dropouts 0.3-1.3s, voltage sags, overvoltage flares, and 8-14s whole-grid generator stumbles) in a pitch-black ambient horror environment with dense claustrophobic fog (`FogEnd = 85`), and updates `ElevatorIndicator` to amber.
 
 #### **Stage 3 – Call and Defend**
 1. `ElevatorCallButton.CallElevatorPrompt` activates **only** when `DoorUnjammed == true` **and** `ElevatorPower == true`.
